@@ -1,0 +1,107 @@
+ASSIGNMENT - LAB WEEK 11
+
+1. When a user takes a picture, that picture is stored in a path based on the given URI.
+   In which part of the code handles this?
+
+JAWABAN:
+Bagian kode yang handle penyimpanan gambar berdasarkan URI ada di MainActivity.kt pada method openImageCapture() dan di callback takePictureLauncher:
+
+Code snippet:
+```kotlin
+// Di onCreate() - mendaftarkan activity result launcher
+takePictureLauncher =
+    registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        if (success) {
+            providerFileManager.insertImageToStore(photoInfo)
+        }
+    }
+
+// Method untuk membuka kamera dan capture gambar
+private fun openImageCapture() {
+    photoInfo = providerFileManager.generatePhotoUri(System.currentTimeMillis())
+    photoInfo?.uri?.let { takePictureLauncher.launch(it) }
+}
+```
+
+Penjelasan:
+- generatePhotoUri() membuat URI dan path untuk file foto
+- takePictureLauncher.launch(it) meluncurkan kamera dengan URI tersebut
+- Saat foto berhasil diambil (success = true), insertImageToStore() dipanggil untuk menyimpan ke MediaStore
+
+2. In your FileInfo.kt, there are 5 attributes. On the first attribute, what does the URI refer to?
+   And on the fourth attribute, what does relativePath refer to?
+
+JAWABAN:
+
+Attribute pertama (uri: Uri):
+URI ini adalah Content URI yang di-generate oleh FileProvider. URI ini merupakan temporary URI yang memberikan akses terbatas kepada aplikasi kamera untuk menulis file ke lokasi yang ditentukan. URI ini berbentuk seperti:
+content://com.example.lab_week_11_b.camera/photos/img_1234567890.jpg
+
+Fungsinya adalah sebagai "izin sementara" agar aplikasi kamera bisa menyimpan hasil foto/video ke folder aplikasi kita tanpa harus memberikan akses penuh ke seluruh storage.
+
+Attribute keempat (relativePath: String):
+relativePath adalah path relatif di dalam external storage dimana file akan disimpan di MediaStore. Contohnya:
+- Untuk foto: "Pictures" (setara dengan Environment.DIRECTORY_PICTURES)
+- Untuk video: "Movies" (setara dengan Environment.DIRECTORY_MOVIES)
+
+Path lengkapnya akan menjadi: /storage/emulated/0/Pictures/img_xxx.jpg
+relativePath ini digunakan oleh MediaStore di Android 10 keatas untuk mengorganisir file ke folder yang tepat agar bisa diakses oleh Gallery dan aplikasi lain.
+
+3. [BONUS] Explain the chronological order from when a user takes a picture until the file is stored in the MediaStore.
+
+JAWABAN:
+
+Urutan kronologis dari user ambil foto sampai tersimpan di MediaStore:
+
+1. USER KLIK BUTTON PHOTO
+   - onClick listener di MainActivity terpanggil
+   - isCapturingVideo = false
+   - checkStoragePermission() dipanggil
+
+2. CEK PERMISSION
+   - Untuk Android 9 ke bawah: cek WRITE_EXTERNAL_STORAGE permission
+   - Untuk Android 10 keatas: langsung lanjut (tidak perlu permission)
+   - Jika permission granted, panggil openImageCapture()
+
+3. GENERATE FILE INFO & URI
+   - openImageCapture() dipanggil
+   - providerFileManager.generatePhotoUri() membuat FileInfo:
+     * Nama file: img_[timestamp].jpg
+     * File object dibuat di getExternalFilesDir(DIRECTORY_PICTURES)
+     * URI di-generate menggunakan FileProvider.getUriForFile()
+   - photoInfo disimpan ke variable
+
+4. LAUNCH CAMERA
+   - takePictureLauncher.launch(photoInfo.uri) dipanggil
+   - Android system membuka aplikasi kamera
+   - URI dikirim ke kamera sebagai output location
+
+5. USER AMBIL FOTO
+   - User klik tombol capture di kamera
+   - Kamera menyimpan file ke URI yang diberikan
+   - File tersimpan di: /sdcard/Android/data/com.example.lab_week_11_b/files/Pictures/
+
+6. CAMERA RESULT CALLBACK
+   - takePictureLauncher callback dipanggil dengan result success=true
+   - providerFileManager.insertImageToStore(photoInfo) dipanggil
+
+7. INSERT KE MEDIASTORE
+   - insertImageToStore() memanggil insertToStore()
+   - contentResolver.insert() membuat entry baru di MediaStore
+   - Entry ini berisi metadata: DISPLAY_NAME, RELATIVE_PATH, MIME_TYPE
+   - MediaStore mengembalikan URI baru untuk file di public storage
+
+8. COPY FILE KE PUBLIC STORAGE
+   - Buka InputStream dari file di app private storage (photoInfo.uri)
+   - Buka OutputStream ke public storage (insertedUri dari MediaStore)
+   - IOUtils.copy() menyalin data dari InputStream ke OutputStream
+   - File sekarang ada di 2 lokasi:
+     * App private: /sdcard/Android/data/com.example.lab_week_11_b/files/Pictures/
+     * Public Gallery: /sdcard/Pictures/
+
+9. FILE TERSEDIA DI GALLERY
+   - MediaStore sudah punya record file tersebut
+   - Gallery apps (Photos, Gallery) bisa query MediaStore dan menampilkan foto
+   - User bisa lihat foto di aplikasi Gallery
+
+Executor digunakan di step 7-8 agar proses copy file berjalan di background thread, tidak memblokir UI thread.
